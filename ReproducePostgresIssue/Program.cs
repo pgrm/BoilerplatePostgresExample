@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
 using ReproducePostgresIssue.Entities;
@@ -9,33 +10,93 @@ namespace ReproducePostgresIssue
 {
     class Program
     {
-        private static AntFarmContext DbContext;
+        static Random rnd = new Random();
 
-        static void Main(string[] args)
+        static async Task Main(string[] args)
         {
+            Task[] jobs = new Task[50];
+
             Console.WriteLine("Hello World!");
             var optionsBuilder = new DbContextOptionsBuilder<AntFarmContext>();
-            optionsBuilder.UseNpgsql("YourConnectionStringPlease");
+            optionsBuilder.UseNpgsql("User Id=postgres;Password=mysecretpassword;Server=127.0.0.1;Port=5432;Database=postgres;Pooling=true;Max Auto Prepare=3;");
 
-            DbContext = new AntFarmContext(optionsBuilder.Options);
+            using (var dbContext = new AntFarmContext(optionsBuilder.Options))
+            {
+                await dbContext.Database.MigrateAsync();
+                await GenerateBaseData(dbContext);
+            }
 
-            GenerateBaseData().Wait();
+            for (int i = 0; i < jobs.Length; i++)
+            {
+                jobs[i] = Task.Run(async () =>
+                {
+                    while (true)
+                    {
+                        await RunRandomJob(optionsBuilder);
+                    }
+                });
+            }
 
-            GetHivesWithInsuredQueen().Wait();
-
-            GetAntsInHiveThatLikeGames(5).Wait();
-
-            InsertThronelessQueens(10);
-
-            GetRiskTakersInHiveThatAreNotLoyalPlayGamesAndQueenIsInsured(4);
-
+            Console.ReadLine();
         }
 
-        private static async Task GenerateBaseData()
+        private static async Task RunRandomJob(DbContextOptionsBuilder<AntFarmContext> optionsBuilder)
+        {
+            try
+            {
+                int randomCase = rnd.Next(8);
+
+                using (var dbContext = new AntFarmContext(optionsBuilder.Options))
+                {
+                    switch (randomCase)
+                    {
+                        case 0:
+//                            Console.WriteLine(nameof(GetHivesWithInsuredQueen));
+                            await GetHivesWithInsuredQueen(dbContext);
+                            break;
+                        case 1:
+//                            Console.WriteLine(nameof(GetAllAnts));
+                            await GetAllAnts(dbContext);
+                            break;
+                        case 2:
+//                            Console.WriteLine(nameof(GetAntsInHiveThatLikeGames));
+                            await GetAntsInHiveThatLikeGames(dbContext);
+                            break;
+                        case 3:
+//                            Console.WriteLine(nameof(GetAntsInHiveWhoAreLoyalAndDoNotPlayAround));
+                            await GetAntsInHiveWhoAreLoyalAndDoNotPlayAround(dbContext);
+                            break;
+                        case 4:
+//                            Console.WriteLine(nameof(GetDriversInHiveThatAreLoyalAndDontPlayGames));
+                            await GetDriversInHiveThatAreLoyalAndDontPlayGames(dbContext);
+                            break;
+                        case 5:
+//                            Console.WriteLine(nameof(GetRiskTakersInHiveThatAreNotLoyalPlayGamesAndQueenIsInsured));
+                            await GetRiskTakersInHiveThatAreNotLoyalPlayGamesAndQueenIsInsured(dbContext);
+                            break;
+                        case 6:
+//                            Console.WriteLine(nameof(InsertMoreAntsToHive));
+                            await InsertMoreAntsToHive(5, dbContext);
+                            break;
+                        case 7:
+//                            Console.WriteLine(nameof(InsertThronelessQueens));
+                            await InsertThronelessQueens(3, dbContext);
+                            break;
+                    }
+                }
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine(e);
+                throw;
+            }
+        }
+
+        private static async Task GenerateBaseData(AntFarmContext dbContext)
         {
             Random rnd = new Random();
 
-            for (int i = 0; i < 10; i++)
+            for (int i = 0; i < 1; i++)
             {
                 var hive = new Hive
                 {
@@ -52,7 +113,7 @@ namespace ReproducePostgresIssue
 
                 var ants = new List<Ant>();
 
-                for (int j = 0; j < 100; j++)
+                for (int j = 0; j < 1; j++)
                 {
                     var ant = new Ant
                     {
@@ -81,36 +142,53 @@ namespace ReproducePostgresIssue
 
                 hive.Ants = ants;
 
-                DbContext.Hives.Add(hive);
+                dbContext.Hives.Add(hive);
+                await dbContext.SaveChangesAsync();
             }
-
-            await DbContext.SaveChangesAsync();
         }
 
-        private static async Task<IReadOnlyList<Hive>> GetHivesWithInsuredQueen()
-            => await DbContext.Hives.Where(h => h.Queen.HasLifeInsurance).ToListAsync();
+        private static async Task<IReadOnlyList<Hive>> GetHivesWithInsuredQueen(AntFarmContext dbContext)
+            => await dbContext.Hives.Where(h => h.Queen.HasLifeInsurance).ToListAsync();
 
-        private static async Task<IReadOnlyList<Ant>> GetAntsThatLikeGames()
-            => await DbContext.Ants.Where(x => x.FavouriteAntGame != null).ToListAsync();
+        private static async Task<IReadOnlyList<Ant>> GetAllAnts(AntFarmContext dbContext)
+            => await dbContext.Ants.ToListAsync();
 
-        private static async Task<IReadOnlyList<Ant>> GetAntsInHiveThatLikeGames(int hiveId)
-            => await DbContext.Ants.Where(a => a.HiveId == hiveId && a.FavouriteAntGame != null).ToListAsync();
+        private static async Task<IReadOnlyList<Ant>> GetAntsInHiveThatLikeGames(AntFarmContext dbContext)
+        {
+            int hiveId = (await dbContext.Hives.FirstAsync()).Id;
 
-        private static async Task<IReadOnlyList<Ant>> GetAntsInHiveWhoAreLoyalAndDoNotPlayAround(int hiveId)
-            => await DbContext.Ants.Where(a => a.HiveId == hiveId && a.IsLoyal && a.FavouriteAntGame == null).ToListAsync();
+            return await dbContext.Ants.Where(a => a.HiveId == hiveId && a.FavouriteAntGame != null).ToListAsync();
+        }
 
-        private static async Task<IReadOnlyList<Ant>> GetDriversInHiveThatAreLoyalAndDontPlayGames(int hiveId)
-            => await DbContext.Ants.Where(a =>
-                a.HiveId == hiveId && a.IsLoyal && a.Job.Contains("Driver") && a.FavouriteAntGame == null).ToListAsync();
+        private static async Task<IReadOnlyList<Ant>> GetAntsInHiveWhoAreLoyalAndDoNotPlayAround(AntFarmContext dbContext)
+        {
+            int hiveId = (await dbContext.Hives.FirstAsync()).Id;
 
-        private static async Task<IReadOnlyList<Ant>> GetRiskTakersInHiveThatAreNotLoyalPlayGamesAndQueenIsInsured(int hiveId)
-            => await DbContext.Ants.Where(a =>
+            return await dbContext.Ants.Where(a => a.HiveId == hiveId && a.IsLoyal && a.FavouriteAntGame == null)
+                .ToListAsync();
+        }
+
+        private static async Task<IReadOnlyList<Ant>> GetDriversInHiveThatAreLoyalAndDontPlayGames(AntFarmContext dbContext)
+        {
+            int hiveId = (await dbContext.Hives.FirstAsync()).Id;
+
+            return await dbContext.Ants.Where(a =>
+                    a.HiveId == hiveId && a.IsLoyal && a.Job.Contains("Driver") && a.FavouriteAntGame == null)
+                .ToListAsync();
+        }
+
+        private static async Task<IReadOnlyList<Ant>> GetRiskTakersInHiveThatAreNotLoyalPlayGamesAndQueenIsInsured(AntFarmContext dbContext)
+        {
+            int hiveId = (await dbContext.Hives.FirstAsync()).Id;
+
+            return await dbContext.Ants.Where(a =>
                 a.HiveId == hiveId && !a.IsLoyal && a.Job == "Risk Taker" && a.FavouriteAntGame != null &&
                 a.Hive.Queen.HasLifeInsurance).ToListAsync();
+        }
 
-        private static async Task InsertMoreAntsToHive(int quantityOfAnts, int hiveId)
+        private static async Task InsertMoreAntsToHive(int quantityOfAnts, AntFarmContext dbContext)
         {
-            var ants = new List<Ant>();
+            int hiveId = (await dbContext.Hives.FirstAsync()).Id;
 
             var rnd = new Random();
             for (int i = 0; i < quantityOfAnts; i++)
@@ -138,27 +216,25 @@ namespace ReproducePostgresIssue
                         ant.Job = "F1 Driver";
                         break;
                 }
-                ants.Add(ant);
+
+                dbContext.Ants.Add(ant);
+                await dbContext.SaveChangesAsync();
             }
-
-            await DbContext.Ants.AddRangeAsync(ants);
-
-            await DbContext.SaveChangesAsync();
         }
 
-        private static async Task InsertThronelessQueens(int queensQuantity)
+        private static async Task InsertThronelessQueens(int queensQuantity, AntFarmContext dbContext)
         {
             for (int i = 0; i < queensQuantity; i++)
             {
-                DbContext.Queens.Add(new Queen
+                dbContext.Queens.Add(new Queen
                 {
                     Name = $"Queen{i}",
                     AgeInDays = i,
                     HasLifeInsurance = true // If you're a queen without a throne, who's there to say you cannot have your own backed life insurance?
                 });
-            }
 
-            await DbContext.SaveChangesAsync();
+                await dbContext.SaveChangesAsync();
+            }
         }
 
     }
