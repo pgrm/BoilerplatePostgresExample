@@ -13,6 +13,8 @@ namespace ReproducePostgresIssue.Entities
 
         public int AgeInDays { get; set; }
 
+        public bool HasLifeInsurance { get; set; }
+
         public int HiveId { get; set; }
 
         public Hive Hive { get; set; }

@@ -18,5 +18,9 @@ namespace ReproducePostgresIssue.Entities
         public int HiveId { get; set; }
 
         public Hive Hive { get; set; }
+
+        public bool IsLoyal { get; set; }
+
+        public string Job { get; set; }
     }
 }
